@@ -1,0 +1,223 @@
+---
+title: "Supplemental Information"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(recdata)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+max_year = 2016
+```
+
+### Data and code availability. 
+
+All data to reproduce our analysis are included as an R package (`recdata`, https://github.com/ecosystem-state/recdata). Similarly, code for automating the univariate and multivariate forecasts is bundled as an R package (`predRecruit`, https://github.com/ecosystem-state/predRecruit). 
+
+### Index standardization
+
+We applied index standardization methods to develop annual indices of larval fish density from the CalCOFI survey. All data from non-experimental stations, 1985 -- 2020 were used in the construction of indices. Specifically, we fit a spatiotemporal model using generalized additive models (GAMs) in the `mgcv` package. We used the fish larvae per ten meters squared of water sampled as a response variable, and because it was both zero-inflated and continuous, modeled the response with a Tweedie distribution. Year effects were included as a factor, and calendar day was included as a penalized spline ("P-spline"). Separate spatial smooths were fit for each year. We used the distribution of stations in the CalCOFI survey to construct a 5-km sampling grid (assigning multiple neighboring stations to the same grid cell) and used the model to project log-density in each grid cell. After converting densities from link space, we generated total estimates of density by summing across grid cells.  
+
+We adopted a simpler approach for the juvenile rockfish (RREAS) data, applying a delta- or hurdle-model to presence-absence and positive counts. Each sub-model included year effects as factors, a 2-dimensional smooth over space (stations are geo-referenced), and a quadratic effect of calendar day. Positive counts were modeled using a Poisson distribution. More complicated models including spatiotemporal effects and time-varying seasonality were also explored, but the sparsity of the data resulted in convergence issues for many models. We used the unique station locations of the survey to generate a 5-km sampling grid in the domain of the survey, and projected estimated occurrence and density from each sub model to each grid cell. These quantities were then multiplied together (after converting from link space) and summed across grid cells to produce an estimate of total density.  
+
+\break  
+
+### Stock assessment data
+
+Table S1. Stock assessments that are included in our analysis. Each assessment includes the time period of 'main' assessment deviations, representing the period with the most precise deviations. Many assessments include an early period, which allows initial age structure to depart from equilibrium, and a late period during which alternative assumptions about deviations are made. The year of assessments and assumed variability in recruitment deviations is also included.
+
+```{r echo=FALSE}
+data(assessment_metadata)
+assessment_metadata = dplyr::select(assessment_metadata, 
+                                    species, region,
+                                    start_main, end_main,
+                                    assessment.year, sigmaR) %>%
+  dplyr::rename(Assessment = assessment.year,
+                Start = start_main, End = end_main,
+                Species=species, Region=region)
+knitr::kable(assessment_metadata)
+```
+
+\break  
+
+Table S2. Description of covariate treatment for each of the models in our analysis. In this table, `x` represents the predictor variables (time series of ROMS or derived indices from juvenile fish surveys) and `species` represents the factor or grouping variable for multivariate models. 
+
+```{r echo=FALSE}
+m = matrix("", 5, 3)
+colnames(m) = c("Model", "Univariate", "Multivariate") 
+m[1,] = c("LMs", "x", "species:x")
+m[2,] = c("GAMs", "s(x, type='ps')", "s(x, species, type='fs')")
+m[3,] = c("Random forest", "x + x^2", "x + x^2")
+m[4,] = c("Lasso", "x + x^2", "species:x + species:x^2")
+m[5,] = c("GLMM", "--", "(x|species)")
+knitr::kable(m)
+```
+
+\break  
+
+```{r echo=FALSE}
+data("calcofi")
+
+calcofi <- dplyr::group_by(calcofi, species) %>%
+      dplyr::mutate(nz = length(which(n_pos_cpue!=0))) %>%
+      dplyr::filter(nz >= 20) %>%
+      dplyr::select(-nz) %>%
+  dplyr::filter(species !="Disintegrated fish larvae")
+
+calcofi_names = unique(calcofi$species)
+```
+
+```{r fig-s1, fig.cap="Estimated time series of species densities from the CalCOFI survey", echo=FALSE}
+calcofi %>% dplyr::filter(species %in% c(calcofi_names[1:12]),
+                          year <= max_year) %>%
+  ggplot(aes(year, index)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~species,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Estimated log density") + 
+  theme(strip.text.x = element_text(size = 6))
+```
+  
+\break  
+
+```{r fig-s2, fig.cap="Estimated time series of species densities from the CalCOFI survey", echo=FALSE}
+calcofi %>% dplyr::filter(species %in% c(calcofi_names[13:24]),
+                          year <= max_year) %>%
+  ggplot(aes(year, index)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~species,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Estimated log density") + 
+  theme(strip.text.x = element_text(size = 6))
+```
+  
+\break  
+
+```{r fig-s3, fig.cap="Estimated time series of species densities from the CalCOFI survey", echo=FALSE}
+calcofi %>% dplyr::filter(species %in% c(calcofi_names[25:36]),
+                          year <= max_year) %>%
+  ggplot(aes(year, index)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~species,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Estimated log density") + 
+  theme(strip.text.x = element_text(size = 6))
+```
+
+
+\break  
+
+```{r fig-s4, fig.cap="Time series of ROMS variables used as predictors", echo=FALSE}
+data("roms")
+
+roms = tidyr::pivot_longer(roms, cols = 2:ncol(roms))
+roms$name = substr(roms$name, 6, nchar(roms$name))
+
+ggplot(dplyr::filter(roms, yr <= max_year), aes(yr, value)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~name,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Value") + 
+  theme(strip.text.x = element_text(size = 6))
+```
+
+\break  
+
+```{r fig-s5, fig.cap="Time series of predicted indices from the juvenile rockfish survey (RREAS) used as predictors", echo=FALSE}
+data("rreas")
+
+rreas_names = unique(rreas$species)
+
+dplyr::filter(rreas, species %in% rreas_names[1:11], year <= max_year) %>%
+ggplot(aes(year, index)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~species,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Estimated log density") + 
+  theme(strip.text.x = element_text(size = 4))
+```
+
+\break  
+
+```{r fig-s6, fig.cap="Time series of predicted indices from the juvenile rockfish survey (RREAS) used as predictors", echo=FALSE}
+data("rreas")
+
+rreas_names = unique(rreas$species)
+
+dplyr::filter(rreas, species %in% rreas_names[12:22], year <= max_year) %>%
+ggplot(aes(year, index)) + 
+  #geom_ribbon(aes(ymin = log_est - 2*se, ymax = log_est + 2*se)) + 
+  facet_wrap(~species,scale="free_y") + 
+  geom_line() + 
+  xlab("Year") + 
+  ylab("Estimated log density") + 
+  theme(strip.text.x = element_text(size = 4))
+```
+
+\break  
+
+
+### Literature cited
+
+Adams, G.D., M.S. Kapur, K. McQuaw, S. Thurner, O.S. Hamel, A. Stephens and C.R. Wetzel. 2019. Stock Assessment Update: Status of Widow Rockfish (*Sebastes entomelas*) Along the U.S. West Coast in
+2019. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Berger, A.M., L. Arnold, and B.T. Rodomsky. 2015. Status of Kelp Greenling *Hexagrammos decagrammus* along
+the Oregon Coast in 2015. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Cope, J.M., D. Sampson, A. Stephens, M. Key, P.P. Mirick, M. Stachura, T. Tsou, P. Weyland, A. Berger, T. Buell, E. Councill, E.J. Dick, K.H. Fenske, M. Monk, B.T. Rodomsky. 2015. Assessments of California, Oregon and Washington Stocks of Black Rockfish (*Sebastes melanops*) in 2015. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Cope, J.M., A.M. Berger, A.D. Whitman, J.E. Budrick, K.M. Bosley, T. Tsou, C.B. Niles, K. Privitera Johnso, L.K. Hillier, K.E. Hinton, and M.N. Wilson. 2019. Assessing Cabezon (*Scorpaenichthys marmoratus*) stocks in waters off of California and Oregon, with catch limit estimation for Washington State. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Cope, J.M., and A.D. Whitman. 2021. Status of Vermilion rockfish (*Sebastes miniatus*) along the
+US West - Oregon coast in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Cope, J.M., T. Tsou, K. Hinton, and C. Niles. 2021. Status of Vermilion rockfish (*Sebastes miniatus*) along the US West - Washington State coast in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Dick, E.J., A. Berger, J. Bizzarro, K. Bosley, J. Cope, J. Field, L. Gilbert-Horvath, N. Grunloh, M. IvensDuran, R. Miller, K. Privitera-Johnson, and B.T. Rodomsky. 2017. The Combined Status of Blue and Deacon Rockfishes in U.S. Waters off California and Oregon in 2017. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Field, J.C., S.G. Beyer, and X. He. 2015. Status of the Chilipepper Rockfish, *Sebastes goodei*, in the California Current for 2015. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Gertseva, V. and J.M. Cope. 2017. Stock assessment of the yelloweye rockfish (*Sebastes ruberrimus*) in state and Federal waters off California, Oregon and Washington. Pacific Fishery Management Council, Portland, OR. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+
+He, X., and J.C. Field. 2017. Stock Assessment Update: Status of Bocaccio, *Sebastes paucispinis*, in the Conception, Monterey and Eureka INPFC areas for 2017. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Hicks, A.C., C.R. Wetzel, and J. Harms. 2017. The status of rougheye rockfish (*Sebastes aleutianus*) and blackspotted rockfish (*S. melanostictus*) as a complex along the U.S. West Coast in 2013. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Kapur, M.S., Q. Lee, G.M. Correa, M. Haltuch, V. Gertseva, and O.S. Hamel. 2021. Status of Sablefish (*Anoplopoma fimbria*) along the US West coast in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Monk, M.H., X. He, and J. Budrick. 2017. Status of the California Scorpionfish (Scorpaena
+guttata) Off Southern California in 2017. Pacific Fishery Management Council, Portland, OR.
+Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Monk, M. H. and X. He. 2019. The Combined Status of Gopher *Sebastes carnatus* and Black-and-Yellow Rockfishes *Sebastes chrysomelas* in U.S. Waters Off California in 2019. Pacific Fishery Management Council, Portland, OR. Available from
+http://www.pcouncil.org/groundfish/stock-assessments/
+
+Monk, M.H., E.J. Dick, J.C. Field, E.M. Saas, T.L. Rogers. 2021. The status of Vermilion Rockfish (*Sebastes miniatus*) and Sunset Rockfish (*Sebastes crocotulus*) in U.S. waters off the coast of California north of Point Conception in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Stephens, A. and I.G. Taylor. 2015. Stock Assessment and Status of Longspine Thornyhead (*Sebastolobus altivelis*) off California,
+Oregon and Washington in 2013. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Stephens, A. and I.G. Taylor. 2017. Status of Yellowtail Rockfish (*Sebastes flavidus*) Along the U.S. Pacific Coast in 2017. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Taylor, I.G. and A. Stephens. 2013. Stock Assessment of
+Shortspine Thornyhead in 2013. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Taylor, I.G., K.F. Johnson, B.J. Langseth, A. Stephens, L.S. Lam, M.H. Monk, A.D. Whitman, M.A. Haltuch. 2021. Status of lingcod (*Ophiodon elongatus*) along the northern U.S. west coast in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Thorson, J.T., and C.R. Wetzel. 2015. The status of canary rockfish (*Sebastes pinniger*) in the California Current in
+2015. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Wallace, J.W., and V. Gertseva, 2017. Status of the darkblotched rockfish resource off the continental U.S. Pacific Coast in 2017 (Update of 2015 assessment model). Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Wetzel, C.R., L. Cronin-Fine, and K.F. Johnson. 2017. Status of Pacific ocean perch (*Sebastes alutus*) along the US west coast in 2017. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
+
+Wetzel, C.R., and A.M. Berger. 2021. Status of Dover sole (*Microstomus pacificus*) along the U.S. West Coast in 2021. Pacific Fishery Management Council, Portland, Oregon. Available from http://www.pcouncil.org/groundfish/stock-assessments/
